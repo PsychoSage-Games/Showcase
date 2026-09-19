@@ -872,7 +872,7 @@
           if (!tooCloseToPipe && !tooCloseToBlock) {
             return {
               x,
-              y: (h - 3) - (40 + Math.random() * 20),
+              y: (h - 3) - (55 + Math.random() * 20),
               used: false,
               bounce: 0,
               burstTimer: 0,
@@ -948,9 +948,9 @@
         enemyRespawnTimer = 50;
 
         clouds = [
-          { x: w * 0.15, y: 6, s: 1, v: 0.05 },
-          { x: w * 0.45, y: 4, s: 0.8, v: 0.035 },
-          { x: w * 0.75, y: 7, s: 1.1, v: 0.06 }
+          { x: w * 0.15, y: 16, s: 1, v: 0.05 },
+          { x: w * 0.45, y: 11, s: 0.85, v: 0.035 },
+          { x: w * 0.75, y: 18, s: 1.15, v: 0.06 }
         ];
       }
       window.addEventListener('resize', resize);
@@ -968,6 +968,8 @@
       let mushroom = { active: false, x: 0, popFrom: 0, popT: 1 };
       let poppingCoins = [];
       let pipeState = 'none'; // none | up | up_hold | down | hidden | rise | rise_hold | off
+      let pipeUseStreak = 0, pipeLockout = 0;
+      let pacman = { active: false, x: 0, mouth: 0 };
       let pipeTimer = 0;
       let pipeDepth = 0;
       let particles = [];
@@ -996,13 +998,13 @@
       }
 
       function drawClouds() {
-        ctx.fillStyle = 'rgba(201,162,75,0.09)';
+        ctx.fillStyle = 'rgba(201,162,75,0.22)';
         clouds.forEach(c => {
-          const r = 3 * c.s;
+          const r = 5.5 * c.s;
           ctx.beginPath();
           ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
-          ctx.arc(c.x + r * 1.3, c.y + r * 0.3, r * 0.8, 0, Math.PI * 2);
-          ctx.arc(c.x - r * 1.3, c.y + r * 0.3, r * 0.8, 0, Math.PI * 2);
+          ctx.arc(c.x + r * 1.2, c.y + r * 0.25, r * 0.75, 0, Math.PI * 2);
+          ctx.arc(c.x - r * 1.2, c.y + r * 0.25, r * 0.75, 0, Math.PI * 2);
           ctx.fill();
         });
       }
@@ -1081,40 +1083,83 @@
 
       function drawEnemy(e) {
         const squish = e.squished ? Math.min(1, e.squishTimer / 10) : 0;
-        const bodyH = 9 * (1 - squish * 0.7);
+        const bodyH = 15 * (1 - squish * 0.7);
         const y = h - 2;
         ctx.save();
         ctx.translate(e.x, 0);
 
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
-        ctx.ellipse(0, y, 5, 1.3, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, y, 8, 2, 0, 0, Math.PI * 2);
         ctx.fill();
 
         const grad = ctx.createLinearGradient(0, y - bodyH, 0, y);
-        grad.addColorStop(0, 'rgba(168,78,108,0.95)');
+        grad.addColorStop(0, 'rgba(180,84,116,0.95)');
         grad.addColorStop(1, 'rgba(120,48,72,0.95)');
         ctx.fillStyle = grad;
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = 1.3;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.roundRect(-5.5, y - bodyH, 11, bodyH, 3.5);
+        ctx.roundRect(-9, y - bodyH, 18, bodyH, 5.5);
         ctx.fill();
         ctx.stroke();
 
         if (!e.squished) {
           // big eyes with highlight
           ctx.fillStyle = 'rgba(236,230,224,0.95)';
-          ctx.beginPath(); ctx.arc(-2.2, y - bodyH + 3.2, 1.5, 0, Math.PI * 2); ctx.fill();
-          ctx.beginPath(); ctx.arc(2.2, y - bodyH + 3.2, 1.5, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(-3.6, y - bodyH + 5, 2.4, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(3.6, y - bodyH + 5, 2.4, 0, Math.PI * 2); ctx.fill();
           ctx.fillStyle = 'rgba(12,10,16,0.9)';
-          ctx.beginPath(); ctx.arc(-2, y - bodyH + 3.4, 0.8, 0, Math.PI * 2); ctx.fill();
-          ctx.beginPath(); ctx.arc(2.4, y - bodyH + 3.4, 0.8, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(-3.2, y - bodyH + 5.3, 1.3, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(4, y - bodyH + 5.3, 1.3, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = 'rgba(12,10,16,0.6)';
-          ctx.lineWidth = 0.8;
-          ctx.beginPath(); ctx.moveTo(-3.8, y - bodyH + 0.6); ctx.lineTo(-1, y - bodyH); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(3.8, y - bodyH + 0.6); ctx.lineTo(1, y - bodyH); ctx.stroke();
+          ctx.lineWidth = 1.1;
+          ctx.beginPath(); ctx.moveTo(-6, y - bodyH + 1); ctx.lineTo(-1.6, y - bodyH - 0.4); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(6, y - bodyH + 1); ctx.lineTo(1.6, y - bodyH - 0.4); ctx.stroke();
         }
+        ctx.restore();
+      }
+
+      function drawPacman(p) {
+        const y = h - 2;
+        const r = 11;
+        const mouthAngle = 0.15 + Math.abs(Math.sin(p.mouth)) * 0.55;
+        const startA = Math.PI + mouthAngle;
+        const endA = Math.PI - mouthAngle + Math.PI * 2;
+
+        ctx.save();
+        ctx.translate(p.x, y - r);
+
+        ctx.shadowColor = 'rgba(150,200,90,0.55)';
+        ctx.shadowBlur = 10;
+
+        const grad = ctx.createRadialGradient(-3, -3, 1, 0, 0, r * 1.2);
+        grad.addColorStop(0, 'rgba(188,198,138,0.95)');
+        grad.addColorStop(1, 'rgba(132,142,88,0.95)');
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = 'rgba(10,8,14,0.9)';
+        ctx.lineWidth = 1.5;
+
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        const steps = 26;
+        for (let i = 0; i <= steps; i++) {
+          const a = startA + (endA - startA) * (i / steps);
+          const jitter = (i === 0 || i === steps) ? 0 : Math.sin(i * 7.3 + p.x) * 0.9;
+          const rr = r + jitter;
+          ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // hollow void eye — no highlight, unsettling
+        ctx.fillStyle = 'rgba(8,6,10,0.95)';
+        ctx.beginPath();
+        ctx.ellipse(-1.5, -5, 2.1, 2.6, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+
         ctx.restore();
       }
 
@@ -1199,10 +1244,14 @@
           p.y += p.vy;
           p.vy += 0.12;
           p.life -= 0.05;
-          ctx.fillStyle = p.color.replace('ALPHA', Math.max(0, p.life));
+          const c = p.color.replace('ALPHA', Math.max(0, p.life));
+          ctx.shadowColor = c;
+          ctx.shadowBlur = 5;
+          ctx.fillStyle = c;
           ctx.beginPath();
-          ctx.arc(p.x, p.y, 1.6 * Math.max(0, p.life), 0, Math.PI * 2);
+          ctx.arc(p.x, p.y, 1.8 * Math.max(0, p.life), 0, Math.PI * 2);
           ctx.fill();
+          ctx.shadowBlur = 0;
         });
         particles = particles.filter(p => p.life > 0);
       }
@@ -1286,8 +1335,11 @@
         ctx.beginPath(); ctx.ellipse(-4.6 * s, headY + 2.4 * s, 1.6 * s, 1.1 * s, 0, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.ellipse(4.6 * s, headY + 2.2 * s, 1.6 * s, 1.1 * s, 0, 0, Math.PI * 2); ctx.fill();
 
-        // cap (dome + brim) with highlight and thick outline
-        const capGrad = ctx.createLinearGradient(-headR, headY - headR, headR, headY);
+        // cap: simple dome + short visor, sitting well above the eyes
+        const capY = headY - headR * 0.42;
+        const capR = headR + 1.0 * s;
+
+        const capGrad = ctx.createLinearGradient(-capR, capY - capR, capR, capY);
         capGrad.addColorStop(0, 'rgba(216,78,72,0.98)');
         capGrad.addColorStop(1, 'rgba(168,50,46,0.98)');
         ctx.shadowColor = 'rgba(196,64,58,0.5)';
@@ -1295,28 +1347,33 @@
         ctx.fillStyle = capGrad;
         ctx.strokeStyle = OUTLINE;
         ctx.lineWidth = 1.2 * s;
+
+        // dome (closed semicircle — closePath draws the flat base automatically)
         ctx.beginPath();
-        ctx.arc(0, headY - 0.5 * s, headR + 1.2 * s, Math.PI, 0);
+        ctx.arc(0, capY, capR, Math.PI, 0);
+        ctx.closePath();
         ctx.fill();
         ctx.stroke();
+
+        // short front visor, flush with the dome's base line
         ctx.beginPath();
-        ctx.roundRect(0.5 * s, headY - 1.6 * s, 7 * s, 3.2 * s, 1.5 * s);
+        ctx.roundRect(0.4 * s, capY - 1 * s, 6 * s, 2 * s, 1 * s);
         ctx.fill();
         ctx.stroke();
         ctx.shadowBlur = 0;
-        // cap highlight streak + small emblem
-        ctx.strokeStyle = 'rgba(255,190,180,0.45)';
-        ctx.lineWidth = 1 * s;
+
+        // soft highlight on the dome (contained, no stray line)
+        ctx.fillStyle = 'rgba(255,200,190,0.3)';
         ctx.beginPath();
-        ctx.arc(-1.5 * s, headY - 2.5 * s, headR * 0.6, Math.PI * 1.15, Math.PI * 1.55);
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(227,189,107,0.95)';
-        ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = 0.7 * s;
-        ctx.beginPath();
-        ctx.arc(-2.5 * s, headY - 5.5 * s, 1.3 * s, 0, Math.PI * 2);
+        ctx.ellipse(-2.6 * s, capY - 2.6 * s, headR * 0.4, headR * 0.26, -0.4, 0, Math.PI * 2);
         ctx.fill();
-        ctx.stroke();
+
+        // "PS" lettering on the cap
+        ctx.fillStyle = 'rgba(227,189,107,0.95)';
+        ctx.font = `bold ${3.6 * s}px Vazirmatn, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('PS', 0, capY - 1.8 * s);
 
         // mustache
         ctx.fillStyle = 'rgba(60,42,30,0.9)';
@@ -1326,9 +1383,9 @@
         ctx.fill();
         ctx.stroke();
 
-        // big cartoon eyes: white sclera + pupil + sparkle
-        [{ ex: 2.2, ey: -1, r: 1.85 }, { ex: -2.6, ey: -0.6, r: 1.5 }].forEach(eye => {
-          const ex = eye.ex * s, ey = headY + eye.ey * s, r = eye.r * s;
+        // big cartoon eyes (equal size): white sclera + pupil + sparkle
+        [{ ex: 2.3, ey: -0.8 }, { ex: -2.5, ey: -0.6 }].forEach(eye => {
+          const ex = eye.ex * s, ey = headY + eye.ey * s, r = 1.7 * s;
           ctx.fillStyle = 'rgba(248,244,236,0.98)';
           ctx.strokeStyle = OUTLINE;
           ctx.lineWidth = 0.7 * s;
@@ -1357,6 +1414,22 @@
           if (c.x - 12 > w) c.x = -12;
         });
 
+        if (pacman.active) {
+          pacman.mouth += 0.35;
+          pacman.x -= 1.6;
+          enemies.forEach(en => {
+            if (!en.squished && Math.abs(pacman.x - en.x) < 10) {
+              en.squished = true;
+              en.squishTimer = 22; // skip the normal squish pose, vanish quickly
+              spawnParticles(en.x, h - 8, 'rgba(140,60,90,ALPHA)', 5);
+            }
+          });
+          if (pacman.x < -14) {
+            pacman.active = false;
+            enemyRespawnTimer = Math.max(enemyRespawnTimer, 160 + Math.random() * 120);
+          }
+        }
+
         if (pipeState === 'none') {
           charX += dir * speed;
           if (charX < MARGIN) { charX = MARGIN; dir = 1; dirCooldown = 40; }
@@ -1365,13 +1438,15 @@
           if (grounded) walkPhase += speed * 0.9;
 
           const nearBlock = blocks.find(b => !b.used && Math.abs(charX - b.x) < 10);
+          const nearEnemy = enemies.find(en => !en.squished && Math.abs(charX - en.x) < 11);
 
           if (dirCooldown > 0) dirCooldown--;
 
           if (grounded) {
-            if (dirCooldown <= 0 && Math.random() < 0.012) {
-              const target = blocks.find(b => !b.used);
-              if (target && Math.random() < 0.7) {
+            if (dirCooldown <= 0 && Math.random() < 0.014) {
+              const targets = [...blocks.filter(b => !b.used), ...enemies.filter(en => !en.squished)];
+              const target = targets[Math.floor(Math.random() * targets.length)];
+              if (target && Math.random() < 0.75) {
                 dir = target.x > charX ? 1 : -1;
               } else {
                 dir *= -1;
@@ -1380,9 +1455,9 @@
             }
             if (Math.random() < 0.004) speed = 0.4 + Math.random() * 0.5;
 
-            // jump only when it's purposeful — right under an active block
-            if (nearBlock && Math.random() < 0.06) {
-              jumpVel = -(4.0 + Math.random() * 1.8);
+            // jump only when it's purposeful — under a block or right by an enemy
+            if ((nearBlock || nearEnemy) && Math.random() < 0.09) {
+              jumpVel = -(4.4 + Math.random() * 2.0);
               grounded = false;
             }
             if (squash === 0 && Math.random() < 0.003) squash = 6;
@@ -1411,6 +1486,11 @@
                     mushroom.popFrom = b.y;
                     mushroom.popT = 0;
                     spawnParticles(b.x, b.y, 'rgba(180,70,85,ALPHA)', 6);
+                  }
+                  if (!pacman.active && Math.random() < 0.012) {
+                    pacman.active = true;
+                    pacman.x = w + 12;
+                    pacman.mouth = 0;
                   }
                 }
               });
@@ -1448,14 +1528,14 @@
               if (e.x < e.baseX - e.range) { e.x = e.baseX - e.range; e.dir = 1; }
               if (e.x > e.baseX + e.range) { e.x = e.baseX + e.range; e.dir = -1; }
 
-              if (!grounded && jumpVel > 0 && Math.abs(charX - e.x) < 7) {
+              if (!grounded && jumpVel > 0 && Math.abs(charX - e.x) < 10) {
                 const feetY = h - 2 + yOffset;
-                if (feetY > h - 11 && feetY < h - 1) {
+                if (feetY > h - 17 && feetY < h - 1) {
                   e.squished = true;
                   e.squishTimer = 0;
                   jumpVel = -(2.2 + Math.random() * 0.8);
                   grounded = false;
-                  spawnParticles(e.x, h - 6, 'rgba(140,60,90,ALPHA)', 6);
+                  spawnParticles(e.x, h - 8, 'rgba(180,84,116,ALPHA)', 9);
                 }
               }
             } else {
@@ -1493,7 +1573,9 @@
             }
           }
 
-          if (grounded) {
+          if (pipeLockout > 0) pipeLockout--;
+
+          if (grounded && pipeLockout <= 0) {
             pipeXs.forEach((px) => {
               if (Math.abs(charX - px) < 4 && Math.random() < 0.045) {
                 pipeState = 'up';
@@ -1539,7 +1621,14 @@
           pipeTimer++;
           const t = Math.min(1, pipeTimer / 8);
           yOffset = -PIPE_H * (1 - t);
-          if (pipeTimer >= 8) { pipeState = 'none'; pipeTimer = 0; yOffset = 0; pipeDepth = 0; }
+          if (pipeTimer >= 8) {
+            pipeState = 'none'; pipeTimer = 0; yOffset = 0; pipeDepth = 0;
+            pipeUseStreak++;
+            if (pipeUseStreak >= 2) {
+              pipeUseStreak = 0;
+              pipeLockout = 260 + Math.random() * 200; // do something else for a while
+            }
+          }
         }
       }
 
@@ -1550,6 +1639,7 @@
         pipeXs.forEach(drawPipe);
         blocks.forEach(drawBlock);
         enemies.forEach(drawEnemy);
+        if (pacman.active) drawPacman(pacman);
         if (mushroom.active) {
           const t = easeOut(mushroom.popT);
           const my = mushroom.popFrom + ((h - 6) - mushroom.popFrom) * t;
