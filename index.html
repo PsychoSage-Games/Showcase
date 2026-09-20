@@ -948,9 +948,11 @@
         enemyRespawnTimer = 50;
 
         clouds = [
-          { x: w * 0.15, y: 16, s: 1, v: 0.05 },
-          { x: w * 0.45, y: 11, s: 0.85, v: 0.035 },
-          { x: w * 0.75, y: 18, s: 1.15, v: 0.06 }
+          { x: w * 0.08, y: 15, s: 0.9, v: 0.045 },
+          { x: w * 0.28, y: 20, s: 1.1, v: 0.06 },
+          { x: w * 0.5, y: 12, s: 0.95, v: 0.035 },
+          { x: w * 0.7, y: 19, s: 1.2, v: 0.055 },
+          { x: w * 0.9, y: 14, s: 1, v: 0.04 }
         ];
       }
       window.addEventListener('resize', resize);
@@ -1000,7 +1002,7 @@
       function drawClouds() {
         ctx.fillStyle = 'rgba(201,162,75,0.22)';
         clouds.forEach(c => {
-          const r = 5.5 * c.s;
+          const r = 7.5 * c.s;
           ctx.beginPath();
           ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
           ctx.arc(c.x + r * 1.2, c.y + r * 0.25, r * 0.75, 0, Math.PI * 2);
@@ -1083,8 +1085,12 @@
 
       function drawEnemy(e) {
         const squish = e.squished ? Math.min(1, e.squishTimer / 10) : 0;
-        const bodyH = 15 * (1 - squish * 0.7);
+        const bw = 8.5 * (1 - squish * 0.25);
+        const bh = 17 * (1 - squish * 0.75);
         const y = h - 2;
+        const domeR = bw;
+        const topY = y - bh;
+
         ctx.save();
         ctx.translate(e.x, 0);
 
@@ -1093,36 +1099,55 @@
         ctx.ellipse(0, y, 8, 2, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        const grad = ctx.createLinearGradient(0, y - bodyH, 0, y);
-        grad.addColorStop(0, 'rgba(180,84,116,0.95)');
+        const grad = ctx.createLinearGradient(0, topY, 0, y);
+        grad.addColorStop(0, 'rgba(190,96,128,0.95)');
         grad.addColorStop(1, 'rgba(120,48,72,0.95)');
         ctx.fillStyle = grad;
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.4;
+        ctx.lineJoin = 'round';
+
+        // ghost body: dome top + zigzag scalloped bottom (classic Pac-Man ghost silhouette)
+        const legN = 3;
+        const legY = y - bh * 0.08;
+        const peakY = y - bh * 0.34;
+        const seg = (bw * 2) / (legN * 2);
+
         ctx.beginPath();
-        ctx.roundRect(-9, y - bodyH, 18, bodyH, 5.5);
+        ctx.arc(0, topY + domeR, domeR, Math.PI, 0);
+        ctx.lineTo(bw, peakY);
+        let cx = bw;
+        for (let i = 0; i < legN; i++) {
+          cx -= seg; ctx.lineTo(cx, legY);
+          cx -= seg; ctx.lineTo(cx, peakY);
+        }
+        ctx.lineTo(-bw, topY + domeR);
+        ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
         if (!e.squished) {
-          // big eyes with highlight
-          ctx.fillStyle = 'rgba(236,230,224,0.95)';
-          ctx.beginPath(); ctx.arc(-3.6, y - bodyH + 5, 2.4, 0, Math.PI * 2); ctx.fill();
-          ctx.beginPath(); ctx.arc(3.6, y - bodyH + 5, 2.4, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = 'rgba(12,10,16,0.9)';
-          ctx.beginPath(); ctx.arc(-3.2, y - bodyH + 5.3, 1.3, 0, Math.PI * 2); ctx.fill();
-          ctx.beginPath(); ctx.arc(4, y - bodyH + 5.3, 1.3, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = 'rgba(12,10,16,0.6)';
-          ctx.lineWidth = 1.1;
-          ctx.beginPath(); ctx.moveTo(-6, y - bodyH + 1); ctx.lineTo(-1.6, y - bodyH - 0.4); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(6, y - bodyH + 1); ctx.lineTo(1.6, y - bodyH - 0.4); ctx.stroke();
+          [-1, 1].forEach(side => {
+            const ex = side * 3.4, ey = topY + domeR * 0.85;
+            ctx.fillStyle = 'rgba(240,238,232,0.97)';
+            ctx.strokeStyle = OUTLINE;
+            ctx.lineWidth = 0.8;
+            ctx.beginPath();
+            ctx.ellipse(ex, ey, 2.5, 3.2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(28,34,56,0.95)';
+            ctx.beginPath();
+            ctx.arc(ex + e.dir * 1, ey + 0.5, 1.35, 0, Math.PI * 2);
+            ctx.fill();
+          });
         }
         ctx.restore();
       }
 
       function drawPacman(p) {
         const y = h - 2;
-        const r = 11;
+        const r = 15;
         const mouthAngle = 0.15 + Math.abs(Math.sin(p.mouth)) * 0.55;
         const startA = Math.PI + mouthAngle;
         const endA = Math.PI - mouthAngle + Math.PI * 2;
@@ -1138,14 +1163,14 @@
         grad.addColorStop(1, 'rgba(132,142,88,0.95)');
         ctx.fillStyle = grad;
         ctx.strokeStyle = 'rgba(10,8,14,0.9)';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = 1.7;
 
         ctx.beginPath();
         ctx.moveTo(0, 0);
         const steps = 26;
         for (let i = 0; i <= steps; i++) {
           const a = startA + (endA - startA) * (i / steps);
-          const jitter = (i === 0 || i === steps) ? 0 : Math.sin(i * 7.3 + p.x) * 0.9;
+          const jitter = (i === 0 || i === steps) ? 0 : Math.sin(i * 7.3 + p.x) * 1.1;
           const rr = r + jitter;
           ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
         }
@@ -1154,11 +1179,18 @@
         ctx.stroke();
         ctx.shadowBlur = 0;
 
-        // hollow void eye — no highlight, unsettling
+        // hollow void eye, with a small glowing pupil for a menacing focal point
         ctx.fillStyle = 'rgba(8,6,10,0.95)';
         ctx.beginPath();
-        ctx.ellipse(-1.5, -5, 2.1, 2.6, -0.2, 0, Math.PI * 2);
+        ctx.ellipse(-2, -6.5, 2.8, 3.4, -0.2, 0, Math.PI * 2);
         ctx.fill();
+        ctx.shadowColor = 'rgba(210,60,60,0.9)';
+        ctx.shadowBlur = 4;
+        ctx.fillStyle = 'rgba(200,50,50,0.95)';
+        ctx.beginPath();
+        ctx.arc(-2, -6.5, 0.9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
 
         ctx.restore();
       }
@@ -1369,11 +1401,14 @@
         ctx.fill();
 
         // "PS" lettering on the cap
-        ctx.fillStyle = 'rgba(227,189,107,0.95)';
-        ctx.font = `bold ${3.6 * s}px Vazirmatn, sans-serif`;
+        ctx.font = `900 ${5 * s}px Arial, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('PS', 0, capY - 1.8 * s);
+        ctx.lineWidth = 1.4 * s;
+        ctx.strokeStyle = 'rgba(90,30,28,0.9)';
+        ctx.strokeText('PS', 0, capY - 2.2 * s);
+        ctx.fillStyle = 'rgba(240,208,140,0.98)';
+        ctx.fillText('PS', 0, capY - 2.2 * s);
 
         // mustache
         ctx.fillStyle = 'rgba(60,42,30,0.9)';
@@ -1415,7 +1450,7 @@
         });
 
         if (pacman.active) {
-          pacman.mouth += 0.35;
+          pacman.mouth += 0.12;
           pacman.x -= 1.6;
           enemies.forEach(en => {
             if (!en.squished && Math.abs(pacman.x - en.x) < 10) {
