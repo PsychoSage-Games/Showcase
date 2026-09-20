@@ -365,13 +365,17 @@
   .cta-box p { margin: 0 0 26px; color: var(--ink-muted); font-size: 15px; }
   .email-row {
     position: relative;
+    z-index: 2;
     display: inline-flex;
     align-items: center;
     gap: 16px;
-    background: rgba(201,162,75,0.06);
-    border: 1px solid var(--card-line);
+    background: rgba(10,8,13,0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(201,162,75,0.4);
     border-radius: 100px;
     padding: 7px 7px 7px 22px;
+    box-shadow: 0 10px 26px -8px rgba(0,0,0,0.6);
   }
   .email-text {
     font-size: 14.5px;
@@ -952,11 +956,15 @@
         enemyRespawnTimer = 50;
 
         clouds = [
-          { x: w * 0.08, y: 15, s: 0.9, v: 0.045 },
-          { x: w * 0.28, y: 20, s: 1.1, v: 0.06 },
-          { x: w * 0.5, y: 12, s: 0.95, v: 0.035 },
-          { x: w * 0.7, y: 19, s: 1.2, v: 0.055 },
-          { x: w * 0.9, y: 14, s: 1, v: 0.04 }
+          // lower row (existing position), slightly smaller
+          { x: w * 0.1, y: 24, s: 0.75, v: 0.045 },
+          { x: w * 0.35, y: 29, s: 0.9, v: 0.06 },
+          { x: w * 0.62, y: 26, s: 0.8, v: 0.035 },
+          { x: w * 0.85, y: 30, s: 0.95, v: 0.05 },
+          // upper row, same size or a bit bigger
+          { x: w * 0.2, y: 9, s: 1.05, v: 0.04 },
+          { x: w * 0.48, y: 6, s: 1.25, v: 0.055 },
+          { x: w * 0.75, y: 10, s: 1.1, v: 0.045 }
         ];
       }
       window.addEventListener('resize', resize);
@@ -969,8 +977,12 @@
       let charX = w / 2, dir = 1, speed = 0.55;
       let dirCooldown = 60;
       let jumpVel = 0, yOffset = 0, grounded = true, squash = 0;
+      let stretch = 0, tilt = 0;
+      let jumpWindup = 0, jumpWindupTarget = 0, lastJumpStrength = 0;
       let growTimer = 0;
       let walkPhase = 0;
+      let blinkCooldown = 150, blinkFrames = 0;
+      let glanceCooldown = 220, glanceFrames = 0, glanceX = 0;
       let mushroom = { active: false, x: 0, popFrom: 0, popT: 1 };
       let poppingCoins = [];
       let pipeState = 'none'; // none | up | up_hold | down | hidden | rise | rise_hold | off
@@ -986,17 +998,28 @@
 
       function easeOut(t) { return t * (2 - t); }
 
-      function spawnParticles(x, y, color, n) {
+      function spawnParticles(x, y, color, n, shape, opts) {
+        const o = opts || {};
+        const spread = o.spread || 2.4;
+        const decay = o.decay || 0.05;
+        const sizeMul = o.sizeMul || 1;
         for (let i = 0; i < n; i++) {
           particles.push({
             x, y,
-            vx: (Math.random() - 0.5) * 2.4,
-            vy: -Math.random() * 2 - 0.4,
+            vx: (Math.random() - 0.5) * spread,
+            vy: -Math.random() * spread * 0.85 - 0.4,
             life: 1,
-            color
+            decay,
+            sizeMul,
+            color,
+            shape: shape || 'spark',
+            rot: Math.random() * Math.PI * 2,
+            rotV: (Math.random() - 0.5) * 0.35
           });
         }
       }
+
+      let impactRings = [];
 
       function randomOtherPipe(excludeX) {
         const others = pipeXs.filter(x => x !== excludeX);
@@ -1159,12 +1182,12 @@
         ctx.save();
         ctx.translate(p.x, y - r);
 
-        ctx.shadowColor = 'rgba(150,200,90,0.55)';
+        ctx.shadowColor = 'rgba(150,55,80,0.55)';
         ctx.shadowBlur = 10;
 
         const grad = ctx.createRadialGradient(-3, -3, 1, 0, 0, r * 1.2);
-        grad.addColorStop(0, 'rgba(188,198,138,0.95)');
-        grad.addColorStop(1, 'rgba(132,142,88,0.95)');
+        grad.addColorStop(0, 'rgba(205,195,205,0.95)');
+        grad.addColorStop(1, 'rgba(95,72,92,0.95)');
         ctx.fillStyle = grad;
         ctx.strokeStyle = 'rgba(10,8,14,0.9)';
         ctx.lineWidth = 1.7;
@@ -1279,24 +1302,63 @@
           p.x += p.vx;
           p.y += p.vy;
           p.vy += 0.12;
-          p.life -= 0.05;
-          const c = p.color.replace('ALPHA', Math.max(0, p.life));
+          p.life -= (p.decay || 0.05);
+          p.rot += p.rotV;
+          const life = Math.max(0, p.life);
+          const c = p.color.replace('ALPHA', life);
+          const sizeMul = p.sizeMul || 1;
+
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rot);
           ctx.shadowColor = c;
-          ctx.shadowBlur = 5;
+          ctx.shadowBlur = 4;
           ctx.fillStyle = c;
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, 1.8 * Math.max(0, p.life), 0, Math.PI * 2);
-          ctx.fill();
+
+          if (p.shape === 'rock') {
+            const r = 3.4 * life * sizeMul;
+            ctx.beginPath();
+            ctx.moveTo(0, -r); ctx.lineTo(r * 0.8, 0); ctx.lineTo(0, r); ctx.lineTo(-r * 0.8, 0);
+            ctx.closePath();
+            ctx.fill();
+          } else if (p.shape === 'drop') {
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 1.5 * life * sizeMul, 3 * life * sizeMul, 0, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.arc(0, 0, 1.8 * life * sizeMul, 0, Math.PI * 2);
+            ctx.fill();
+          }
           ctx.shadowBlur = 0;
+          ctx.restore();
         });
         particles = particles.filter(p => p.life > 0);
       }
 
+      function drawImpactRings() {
+        impactRings.forEach(r => {
+          r.r += 1.6;
+          r.life -= 0.06;
+          ctx.strokeStyle = `rgba(201,162,75,${Math.max(0, r.life) * 0.7})`;
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.ellipse(r.x, r.y, r.r, r.r * 0.35, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+        impactRings = impactRings.filter(r => r.life > 0);
+      }
+
       function drawChar(x, y, scale) {
-        const s = scale, sy = scale * Math.max(0.45, 1 - squash * 0.3);
+        const stretchFactor = 1 + stretch;
+        const s = scale * (1 - stretch * 0.22);
+        const sy = scale * Math.max(0.45, 1 - squash * 0.3) * stretchFactor;
+        const bodyBob = grounded ? Math.abs(Math.sin(walkPhase)) * 1.1 * s : 0;
+        const yUp = y - bodyBob;
 
         ctx.save();
         ctx.translate(x, 0);
+        ctx.rotate(tilt);
         ctx.scale(dir, 1);
 
         // ground shadow
@@ -1329,32 +1391,33 @@
           ctx.stroke();
         });
 
-        // arms
+        // arms (swing opposite the legs while walking)
+        const armSwing = grounded ? -Math.sin(walkPhase) * 2 * s : 0;
         ctx.fillStyle = RED_DARK;
         ctx.beginPath();
-        ctx.ellipse(-7.2 * s, y - 9 * sy, 2.1 * s, 3 * sy, 0.25, 0, Math.PI * 2);
+        ctx.ellipse(-7.2 * s, yUp - 9 * sy + armSwing, 2.1 * s, 3 * sy, 0.25, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
         ctx.beginPath();
-        ctx.ellipse(7.2 * s, y - 9.5 * sy, 2.1 * s, 3 * sy, -0.25, 0, Math.PI * 2);
+        ctx.ellipse(7.2 * s, yUp - 9.5 * sy - armSwing, 2.1 * s, 3 * sy, -0.25, 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
 
         // body (rounded torso, with top-highlight / bottom-shadow shading)
-        const bodyGrad = ctx.createLinearGradient(0, y - 15 * sy, 0, y - 4.5 * sy);
+        const bodyGrad = ctx.createLinearGradient(0, yUp - 15 * sy, 0, yUp - 4.5 * sy);
         bodyGrad.addColorStop(0, 'rgba(210,82,76,0.95)');
         bodyGrad.addColorStop(1, 'rgba(140,42,40,0.95)');
         ctx.fillStyle = bodyGrad;
         ctx.beginPath();
-        ctx.roundRect(-6.5 * s, y - 15 * sy, 13 * s, 10.5 * sy, 4.5 * s);
+        ctx.roundRect(-6.5 * s, yUp - 15 * sy, 13 * s, 10.5 * sy, 4.5 * s);
         ctx.fill();
         ctx.stroke();
         // overall straps (gold buttons)
         ctx.fillStyle = 'rgba(227,189,107,0.95)';
         ctx.lineWidth = 0.8 * s;
-        ctx.beginPath(); ctx.arc(-2.8 * s, y - 12 * sy, 1 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(2.8 * s, y - 12 * sy, 1 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(-2.8 * s, yUp - 12 * sy, 1 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(2.8 * s, yUp - 12 * sy, 1 * s, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
 
         // head (chibi-big, gentle top-light shading)
-        const headY = y - 21 * sy;
+        const headY = yUp - 21 * sy;
         const headR = 7.3 * s;
         const headGrad = ctx.createRadialGradient(-2 * s, headY - 2 * s, 1, 0, headY, headR * 1.3);
         headGrad.addColorStop(0, 'rgba(238,201,140,0.98)');
@@ -1404,7 +1467,9 @@
         ctx.ellipse(-2.6 * s, capY - 2.6 * s, headR * 0.4, headR * 0.26, -0.4, 0, Math.PI * 2);
         ctx.fill();
 
-        // "PS" lettering on the cap
+        // "PS" lettering on the cap (counter-flip so it's never mirrored)
+        ctx.save();
+        ctx.scale(dir, 1);
         ctx.font = `900 ${5 * s}px Arial, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -1413,6 +1478,7 @@
         ctx.strokeText('PS', 0, capY - 2.2 * s);
         ctx.fillStyle = 'rgba(240,208,140,0.98)';
         ctx.fillText('PS', 0, capY - 2.2 * s);
+        ctx.restore();
 
         // mustache
         ctx.fillStyle = 'rgba(60,42,30,0.9)';
@@ -1422,9 +1488,19 @@
         ctx.fill();
         ctx.stroke();
 
-        // big cartoon eyes (equal size): white sclera + pupil + sparkle
+        // big cartoon eyes (equal size): white sclera + pupil + sparkle — with blink & glance quirks
         [{ ex: 2.3, ey: -0.8 }, { ex: -2.5, ey: -0.6 }].forEach(eye => {
           const ex = eye.ex * s, ey = headY + eye.ey * s, r = 1.7 * s;
+          if (blinkFrames > 0) {
+            ctx.strokeStyle = OUTLINE;
+            ctx.lineWidth = 0.9 * s;
+            ctx.beginPath();
+            ctx.moveTo(ex - r, ey);
+            ctx.quadraticCurveTo(ex, ey + r * 0.4, ex + r, ey);
+            ctx.stroke();
+            return;
+          }
+          const pupilOff = glanceFrames > 0 ? glanceX * r * 0.35 : 0;
           ctx.fillStyle = 'rgba(248,244,236,0.98)';
           ctx.strokeStyle = OUTLINE;
           ctx.lineWidth = 0.7 * s;
@@ -1434,11 +1510,11 @@
           ctx.stroke();
           ctx.fillStyle = 'rgba(30,22,18,0.95)';
           ctx.beginPath();
-          ctx.arc(ex + 0.3 * s, ey + 0.4 * s, r * 0.55, 0, Math.PI * 2);
+          ctx.arc(ex + 0.3 * s + pupilOff, ey + 0.4 * s, r * 0.55, 0, Math.PI * 2);
           ctx.fill();
           ctx.fillStyle = 'rgba(255,255,255,0.85)';
           ctx.beginPath();
-          ctx.arc(ex - 0.15 * s, ey - 0.05 * s, r * 0.2, 0, Math.PI * 2);
+          ctx.arc(ex - 0.15 * s + pupilOff, ey - 0.05 * s, r * 0.2, 0, Math.PI * 2);
           ctx.fill();
         });
 
@@ -1474,7 +1550,22 @@
           if (charX < MARGIN) { charX = MARGIN; dir = 1; dirCooldown = 40; }
           if (charX > w - MARGIN) { charX = w - MARGIN; dir = -1; dirCooldown = 40; }
 
-          if (grounded) walkPhase += speed * 0.9;
+          if (grounded) walkPhase += speed * 0.42;
+
+          if (blinkFrames > 0) blinkFrames--;
+          else {
+            blinkCooldown--;
+            if (blinkCooldown <= 0) { blinkFrames = 6; blinkCooldown = 140 + Math.random() * 260; }
+          }
+          if (glanceFrames > 0) glanceFrames--;
+          else {
+            glanceCooldown--;
+            if (glanceCooldown <= 0) {
+              glanceFrames = 40 + Math.random() * 30;
+              glanceX = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 0.5);
+              glanceCooldown = 260 + Math.random() * 300;
+            }
+          }
 
           const nearBlock = blocks.find(b => !b.used && Math.abs(charX - b.x) < 10);
           const nearEnemy = enemies.find(en => !en.squished && Math.abs(charX - en.x) < 11);
@@ -1495,12 +1586,26 @@
             if (Math.random() < 0.004) speed = 0.4 + Math.random() * 0.5;
 
             // jump only when it's purposeful — under a block or right by an enemy
-            if ((nearBlock || nearEnemy) && Math.random() < 0.09) {
-              jumpVel = -(4.4 + Math.random() * 2.0);
-              grounded = false;
+            if (jumpWindup === 0 && (nearBlock || nearEnemy) && Math.random() < 0.022) {
+              jumpWindup = 7;
+              jumpWindupTarget = 4.4 + Math.random() * 2.0;
             }
             if (squash === 0 && Math.random() < 0.003) squash = 6;
           }
+
+          if (jumpWindup > 0) {
+            jumpWindup--;
+            tilt = -0.14 * (1 - jumpWindup / 7);
+            if (jumpWindup === 0) {
+              jumpVel = -jumpWindupTarget;
+              lastJumpStrength = jumpWindupTarget;
+              grounded = false;
+              stretch = 0.3;
+            }
+          } else {
+            tilt *= 0.85;
+          }
+          stretch *= 0.85;
 
           if (squash > 0) squash--;
 
@@ -1526,7 +1631,7 @@
                     mushroom.popT = 0;
                     spawnParticles(b.x, b.y, 'rgba(180,70,85,ALPHA)', 6);
                   }
-                  if (!pacman.active && Math.random() < 0.012) {
+                  if (!pacman.active && Math.random() < 0.04) {
                     pacman.active = true;
                     pacman.x = w + 12;
                     pacman.mouth = 0;
@@ -1537,7 +1642,16 @@
 
             if (yOffset >= 0) {
               yOffset = 0; jumpVel = 0; grounded = true;
-              spawnParticles(charX, h - 2, 'rgba(201,162,75,ALPHA)', 4);
+              squash = 10;
+              stretch = 0;
+              tilt = 0;
+              if (lastJumpStrength > 3.8) {
+                spawnParticles(charX, h - 2, 'rgba(160,124,70,ALPHA)', 16, 'rock', { spread: 4.2, decay: 0.028, sizeMul: 1.3 });
+                impactRings.push({ x: charX, y: h - 2, r: 1, life: 1 });
+              } else {
+                spawnParticles(charX, h - 2, 'rgba(201,162,75,ALPHA)', 6);
+              }
+              lastJumpStrength = 0;
             }
           }
 
@@ -1574,7 +1688,7 @@
                   e.squishTimer = 0;
                   jumpVel = -(2.2 + Math.random() * 0.8);
                   grounded = false;
-                  spawnParticles(e.x, h - 8, 'rgba(180,84,116,ALPHA)', 9);
+                  spawnParticles(e.x, h - 8, 'rgba(214,58,132,ALPHA)', 10, 'drop');
                 }
               }
             } else {
@@ -1614,7 +1728,7 @@
 
           if (pipeLockout > 0) pipeLockout--;
 
-          if (grounded && pipeLockout <= 0) {
+          if (grounded && jumpWindup === 0 && pipeLockout <= 0) {
             pipeXs.forEach((px) => {
               if (Math.abs(charX - px) < 4 && Math.random() < 0.045) {
                 pipeState = 'up';
@@ -1663,7 +1777,7 @@
           if (pipeTimer >= 8) {
             pipeState = 'none'; pipeTimer = 0; yOffset = 0; pipeDepth = 0;
             pipeUseStreak++;
-            if (pipeUseStreak >= 2) {
+            if (pipeUseStreak >= 1) {
               pipeUseStreak = 0;
               pipeLockout = 260 + Math.random() * 200; // do something else for a while
             }
@@ -1685,6 +1799,7 @@
           drawMushroomAt(mushroom.x, my);
         }
         drawPoppingCoins();
+        drawImpactRings();
         drawParticles();
 
         if (pipeState !== 'hidden') {
